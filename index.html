@@ -15,7 +15,7 @@
             height: 100%;
             width: 100%;
             overflow: hidden;
-            background-color: #000000; /* Changed to black */
+            background-color: #000000;
             font-family: 'Press Start 2P', cursive;
             color: #fff;
             display: flex;
@@ -31,10 +31,8 @@
             align-items: center;
         }
         canvas {
-            background-color: #333; /* Asphalt color */
+            background-color: #4a4a4a; /* Brighter asphalt color */
             display: block;
-            border-radius: 10px;
-            border: 2px solid #555;
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
@@ -130,6 +128,9 @@
         <div class="car-option" data-color="#B22222" style="background-color: #B22222;"></div>
         <div class="car-option" data-color="#1E90FF" style="background-color: #1E90FF;"></div>
         <div class="car-option" data-color="#228B22" style="background-color: #228B22;"></div>
+        <div class="car-option" data-color="#8A2BE2" style="background-color: #8A2BE2;"></div>
+        <div class="car-option" data-color="#FF8C00" style="background-color: #FF8C00;"></div>
+        <div class="car-option" data-color="#F5F5F5" style="background-color: #F5F5F5;"></div>
     </div>
     <button id="start-button" class="button">Start Game</button>
 </div>
@@ -138,7 +139,6 @@
     <div class="info-bar">
         <span id="score">Score: 0</span>
         <span id="high-score">Best: 0</span>
-        <span id="global-high-score">Global Best: 0</span>
     </div>
     <canvas id="gameCanvas"></canvas>
     <div id="game-over-menu" class="modal" style="display: none;">
@@ -149,16 +149,11 @@
 </div>
 
 <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
     // --- DOM Elements ---
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const scoreElement = document.getElementById('score');
     const highScoreElement = document.getElementById('high-score');
-    const globalHighScoreElement = document.getElementById('global-high-score');
     const startMenu = document.getElementById('start-menu');
     const gameOverMenu = document.getElementById('game-over-menu');
     const finalScoreElement = document.getElementById('final-score');
@@ -175,54 +170,6 @@
             startMenu.style.display = 'block';
         }, 2500); // Show splash for 2.5 seconds
     });
-
-    // --- Firebase Setup ---
-    let db;
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-endless-driver';
-    let globalHighScoreDocRef;
-    let unsubscribeGlobalHighScore;
-
-    async function initializeFirebase() {
-        try {
-            const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            const auth = getAuth(app);
-            await signInAnonymously(auth);
-            globalHighScoreDocRef = doc(db, `/artifacts/${appId}/public/data/leaderboard`, "globalHighScore");
-            listenToGlobalHighScore();
-        } catch (e) {
-            console.error("Firebase initialization failed. Global high scores will be unavailable.", e);
-            globalHighScoreElement.textContent = "Global Best: N/A";
-        }
-    }
-    initializeFirebase();
-
-    function listenToGlobalHighScore() {
-        if (!globalHighScoreDocRef) return;
-        unsubscribeGlobalHighScore = onSnapshot(globalHighScoreDocRef, (doc) => {
-            if (doc.exists()) {
-                const data = doc.data();
-                globalHighScoreElement.textContent = `Global Best: ${data.score || 0}`;
-            } else {
-                globalHighScoreElement.textContent = `Global Best: 0`;
-            }
-        });
-    }
-
-    async function updateGlobalHighScore(newScore) {
-        if (!globalHighScoreDocRef) return;
-        try {
-            const docSnap = await getDoc(globalHighScoreDocRef);
-            if (!docSnap.exists() || newScore > docSnap.data().score) {
-                await setDoc(globalHighScoreDocRef, { score: newScore });
-                console.log("New global high score set!");
-            }
-        } catch (error) {
-            console.error("Error updating global high score: ", error);
-        }
-    }
-
 
     // --- Audio ---
     let audioCtx;
@@ -275,12 +222,12 @@
     let gameWidth, gameHeight;
     const carWidth = 50;
     const carHeight = 90;
-    const speedIncreaseInterval = 10;
+    const speedIncreaseInterval = 20;
     const initialSpeed = 4;
     const maxSpeed = 18;
 
     // --- Game State ---
-    let car, obstacles, roadMarkings, sceneryObjects, skidMarks;
+    let car, obstacles, roadMarkings, skidMarks;
     let score, highScore, speed, lastSpeedIncreaseScore, selectedCarColor;
     let gameOver;
     let animationFrameId;
@@ -298,6 +245,12 @@
     const playerCar = {
         x: 0, y: 0, width: carWidth, height: carHeight, color: '#1E1E1E',
         draw() {
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.beginPath();
+            ctx.ellipse(this.x + this.width / 2, this.y + this.height, this.width / 2, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+
             // Main car body with gradient
             const gradient = ctx.createLinearGradient(this.x, this.y, this.x + this.width, this.y + this.height);
             gradient.addColorStop(0, this.color);
@@ -338,7 +291,6 @@
 
         obstacles = [];
         roadMarkings = [];
-        sceneryObjects = [];
         skidMarks = [];
         score = 0;
         speed = initialSpeed;
@@ -352,11 +304,11 @@
         
         spawnInitialObstacles();
         spawnInitialRoadMarkings();
-        spawnInitialScenery();
 
         playEngineSound();
 
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        lastTime = performance.now(); // For new game loop
         gameLoop();
     }
     
@@ -367,16 +319,29 @@
         gameHeight = canvas.height;
     }
 
-    // --- Game Loop ---
-    function gameLoop() {
+    // --- High FPS Game Loop ---
+    let lastTime = 0;
+    let accumulator = 0;
+    const fixedTimestep = 1 / 120; // Update physics 120 times a second
+
+    function gameLoop(currentTime = 0) {
         if (gameOver) return;
-        update();
+
+        const deltaTime = (currentTime - lastTime) / 1000; // time in seconds
+        lastTime = currentTime;
+        accumulator += deltaTime;
+
+        while (accumulator >= fixedTimestep) {
+            update(fixedTimestep);
+            accumulator -= fixedTimestep;
+        }
+
         draw();
         animationFrameId = requestAnimationFrame(gameLoop);
     }
 
-    // --- Update Game State ---
-    function update() {
+    // --- Update Game State (Physics) ---
+    function update(dt) { // dt is fixed timestep
         // Car horizontal movement
         if (keys['ArrowLeft'] || keys['a']) {
             if (carPhysics.vx > -carPhysics.maxVx) carPhysics.vx -= carPhysics.acceleration;
@@ -385,7 +350,7 @@
             if (carPhysics.vx < carPhysics.maxVx) carPhysics.vx += carPhysics.acceleration;
         }
         carPhysics.vx *= carPhysics.friction;
-        car.x += carPhysics.vx;
+        car.x += carPhysics.vx * (dt * 60); // Normalized movement to feel consistent at any framerate
 
         // Add skid marks on sharp turns
         if (Math.abs(carPhysics.vx) > 5 && Math.random() > 0.5) {
@@ -397,35 +362,29 @@
 
 
         // Clamp car position to road
-        const roadShoulderWidth = gameWidth * 0.15;
-        car.x = Math.max(roadShoulderWidth, car.x);
-        car.x = Math.min(gameWidth - roadShoulderWidth - car.width, car.x);
+        car.x = Math.max(0, car.x);
+        car.x = Math.min(gameWidth - car.width, car.x);
 
         // Update score and speed
-        score += speed / 50;
+        score += speed / 50 * (dt * 60); // Normalize score to 60fps
         scoreElement.textContent = `Score: ${Math.floor(score)}`;
         if (score > lastSpeedIncreaseScore + speedIncreaseInterval) {
-            speed = Math.min(maxSpeed, speed + 0.2);
+            speed = Math.min(maxSpeed, speed + 0.5);
             lastSpeedIncreaseScore += speedIncreaseInterval;
             updateEnginePitch(speed);
         }
         
-        // Move scenery
-        sceneryObjects.forEach(obj => obj.y += speed * 0.8);
-        sceneryObjects = sceneryObjects.filter(obj => obj.y < gameHeight);
-        if (Math.random() < 0.05) spawnScenery();
-
-
         // Move road markings
-        roadMarkings.forEach(m => m.y += speed);
+        const worldSpeed = speed * (dt * 60);
+        roadMarkings.forEach(m => m.y += worldSpeed);
         roadMarkings = roadMarkings.filter(m => m.y < gameHeight);
         if (roadMarkings.length === 0 || roadMarkings[roadMarkings.length-1].y > 80) {
             spawnRoadMarking();
         }
         
         // Move obstacles
-        obstacles.forEach(o => o.y += speed);
-        if (obstacles.length > 0 && obstacles[0].y > gameHeight) {
+        obstacles.forEach(o => o.y += worldSpeed);
+        while (obstacles.length > 0 && obstacles[0].y > gameHeight) {
             obstacles.shift();
             spawnObstacle();
         }
@@ -438,28 +397,18 @@
         });
     }
 
-    // --- Drawing ---
+    // --- Drawing (Rendering) ---
     function draw() {
         // Clear canvas
         ctx.fillStyle = '#333';
         ctx.fillRect(0, 0, gameWidth, gameHeight);
-
-        // Draw scenery (grass, trees)
-        const roadShoulderWidth = gameWidth * 0.15;
-        ctx.fillStyle = '#006400'; // Dark Green for grass
-        ctx.fillRect(0, 0, roadShoulderWidth, gameHeight);
-        ctx.fillRect(gameWidth - roadShoulderWidth, 0, roadShoulderWidth, gameHeight);
-        sceneryObjects.forEach(obj => {
-            ctx.fillStyle = obj.color;
-            ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
-        });
 
         // Draw skid marks
         ctx.fillStyle = 'rgba(0,0,0,0.3)';
         skidMarks.forEach(skid => ctx.fillRect(skid.x - 1, skid.y, 2, 10));
 
         // Draw road markings
-        ctx.fillStyle = '#FFD700';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
         roadMarkings.forEach(m => {
             ctx.fillRect(m.x, m.y, 5, 40);
         });
@@ -472,19 +421,39 @@
     }
 
     // --- Spawning Logic ---
-    const roadShoulderWidth = () => gameWidth * 0.15;
+    const roadShoulderWidth = () => 0; // Road is fullscreen
     const roadWidth = () => gameWidth - 2 * roadShoulderWidth();
 
     function spawnObstacle() {
+        const blockTwoLanes = score > 100 && Math.random() > 0.6; // 40% chance to block two lanes after score 100
+
+        if (blockTwoLanes) {
+            // Guarantee a path by deciding which lane will be safe first
+            const safeLane = Math.floor(Math.random() * 3);
+            for (let i = 0; i < 3; i++) {
+                if (i !== safeLane) {
+                    createObstacleInLane(i);
+                }
+            }
+        } else {
+            // Block only one lane
+            const laneToBlock = Math.floor(Math.random() * 3);
+            createObstacleInLane(laneToBlock);
+        }
+    }
+
+    function createObstacleInLane(lane) {
          const obstacleTypes = [
-            { type: 'rock', color: '#696969', width: 60, height: 50 },
-            { type: 'wood', color: '#8B4513', width: 90, height: 40 },
-            { type: 'stick', color: '#A0522D', width: 20, height: 80 },
+            { type: 'boulder', width: 70, height: 60 },
+            { type: 'plank', width: 120, height: 25 },
+            { type: 'puddle', width: 80, height: 40 },
+            { type: 'oilSlick', width: 70, height: 50 },
+            { type: 'cone', width: 30, height: 50 },
+            { type: 'barrier', width: roadWidth() / 3 - 20, height: 35 },
         ];
         const selectedType = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
         const laneCount = 3;
         const laneWidth = roadWidth() / laneCount;
-        const lane = Math.floor(Math.random() * laneCount);
         const xPos = roadShoulderWidth() + (lane * laneWidth) + (laneWidth / 2) - (selectedType.width / 2);
 
         let newY = -selectedType.height - Math.random() * 300 - 150;
@@ -492,34 +461,88 @@
     }
     
     function spawnRoadMarking() {
-        const centerX = gameWidth / 2 - 2.5;
-        roadMarkings.push({ x: centerX, y: -40 });
-    }
-
-    function spawnScenery() {
-        const side = Math.random() < 0.5 ? 'left' : 'right';
-        const x = side === 'left' 
-            ? Math.random() * (roadShoulderWidth() - 20)
-            : gameWidth - roadShoulderWidth() + (Math.random() * (roadShoulderWidth() - 20));
-        
-        sceneryObjects.push({x: x, y: -50, width: 20, height: 50, color: '#004d00'});
+        const line1x = gameWidth / 3 - 2.5;
+        const line2x = (gameWidth * 2) / 3 - 2.5;
+        roadMarkings.push({ x: line1x, y: -40 });
+        roadMarkings.push({ x: line2x, y: -40 });
     }
 
     function drawObstacle(obstacle) {
-        ctx.fillStyle = obstacle.color;
-        const grad = ctx.createLinearGradient(obstacle.x, obstacle.y, obstacle.x + obstacle.width, obstacle.y + obstacle.height);
-        grad.addColorStop(0, obstacle.color);
-        grad.addColorStop(1, '#2F4F4F');
-        ctx.fillStyle = grad;
+        // Draw shadow first
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath();
+        ctx.ellipse(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height, obstacle.width / 2, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
 
-        if (obstacle.type === 'rock') {
+        if (obstacle.type === 'boulder') {
+             const grad = ctx.createLinearGradient(obstacle.x, obstacle.y, obstacle.x + obstacle.width, obstacle.y + obstacle.height);
+             grad.addColorStop(0, '#8B8989'); // Lighter gray
+             grad.addColorStop(1, '#5C5C5C'); // Darker gray
+             ctx.fillStyle = grad;
              ctx.beginPath();
-             ctx.moveTo(obstacle.x, obstacle.y + obstacle.height);
-             ctx.quadraticCurveTo(obstacle.x + obstacle.width / 2, obstacle.y - obstacle.height / 2, obstacle.x + obstacle.width, obstacle.y + obstacle.height);
+             ctx.moveTo(obstacle.x + obstacle.width * 0.1, obstacle.y + obstacle.height);
+             ctx.lineTo(obstacle.x, obstacle.y + obstacle.height * 0.6);
+             ctx.lineTo(obstacle.x + obstacle.width * 0.3, obstacle.y);
+             ctx.lineTo(obstacle.x + obstacle.width * 0.8, obstacle.y);
+             ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + obstacle.height * 0.7);
+             ctx.lineTo(obstacle.x + obstacle.width * 0.9, obstacle.y + obstacle.height);
              ctx.closePath();
              ctx.fill();
-        } else {
-             ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        } else if (obstacle.type === 'plank') {
+            ctx.fillStyle = '#8B4513'; // SaddleBrown
+            ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            // Wood grain
+            ctx.strokeStyle = '#5A2D0C';
+            ctx.lineWidth = 1;
+            for(let i=0; i < obstacle.height; i += 5) {
+                ctx.beginPath();
+                ctx.moveTo(obstacle.x, obstacle.y + i);
+                ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + i);
+                ctx.stroke();
+            }
+        } else if (obstacle.type === 'puddle') {
+            ctx.fillStyle = 'rgba(30, 144, 255, 0.5)'; // DodgerBlue with transparency
+            ctx.beginPath();
+            ctx.ellipse(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2, obstacle.width / 2, obstacle.height / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Shimmer
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(obstacle.x + obstacle.width * 0.2, obstacle.y + obstacle.height * 0.3);
+            ctx.bezierCurveTo(obstacle.x + obstacle.width * 0.4, obstacle.y + obstacle.height * 0.1, obstacle.x + obstacle.width * 0.6, obstacle.y + obstacle.height * 0.5, obstacle.x + obstacle.width * 0.8, obstacle.y + obstacle.height * 0.4);
+            ctx.stroke();
+        } else if (obstacle.type === 'oilSlick') {
+             ctx.fillStyle = 'rgba(20, 20, 20, 0.6)';
+             ctx.beginPath();
+             ctx.moveTo(obstacle.x, obstacle.y + obstacle.height * 0.5);
+             ctx.bezierCurveTo(obstacle.x + obstacle.width * 0.3, obstacle.y, obstacle.x + obstacle.width * 0.7, obstacle.y, obstacle.x + obstacle.width, obstacle.y + obstacle.height * 0.6);
+             ctx.bezierCurveTo(obstacle.x + obstacle.width, obstacle.y + obstacle.height, obstacle.x, obstacle.y + obstacle.height, obstacle.x, obstacle.y + obstacle.height * 0.5);
+             ctx.fill();
+        } else if (obstacle.type === 'cone') {
+            // Draw cone body
+            ctx.fillStyle = '#FF4500';
+            ctx.beginPath();
+            ctx.moveTo(obstacle.x + obstacle.width / 2, obstacle.y);
+            ctx.lineTo(obstacle.x + obstacle.width, obstacle.y + obstacle.height);
+            ctx.lineTo(obstacle.x, obstacle.y + obstacle.height);
+            ctx.closePath();
+            ctx.fill();
+            // Draw white stripes
+            ctx.fillStyle = 'white';
+            ctx.fillRect(obstacle.x, obstacle.y + obstacle.height * 0.3, obstacle.width, obstacle.height * 0.2);
+            ctx.fillRect(obstacle.x, obstacle.y + obstacle.height * 0.7, obstacle.width, obstacle.height * 0.2);
+        } else if (obstacle.type === 'barrier') {
+            ctx.fillStyle = '#B22222';
+            ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            ctx.fillStyle = 'white';
+            for(let i = 0; i < 5; i++) {
+                ctx.save();
+                ctx.translate(obstacle.x + i * (obstacle.width / 5), obstacle.y);
+                ctx.rotate(Math.PI / 4);
+                ctx.fillRect(0, 0, 10, 50);
+                ctx.restore();
+            }
         }
     }
 
@@ -527,26 +550,26 @@
         obstacles = []; // Ensure the array is clean before starting
         let lastY = 0; // Reference point for spacing
         for (let i = 0; i < 5; i++) {
-            const obstacleTypes = [
-                { type: 'rock', color: '#696969', width: 60, height: 50 },
-                { type: 'wood', color: '#8B4513', width: 90, height: 40 },
-                { type: 'stick', color: '#A0522D', width: 20, height: 80 },
-            ];
-            const selectedType = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
-            const laneCount = 3;
-            const laneWidth = roadWidth() / laneCount;
-            const lane = Math.floor(Math.random() * laneCount);
-            const xPos = roadShoulderWidth() + (lane * laneWidth) + (laneWidth / 2) - (selectedType.width / 2);
-
-            // Position them progressively further away off-screen
-            const newY = lastY - (250 + Math.random() * 200); // 250px is a minimum gap
-            obstacles.push({ x: xPos, y: newY, ...selectedType });
-            lastY = newY;
+            const lane = Math.floor(Math.random() * 3);
+            createObstacleInLane(lane);
+            // Stagger the initial obstacles
+            if(obstacles.length > 0) {
+                const newY = lastY - (350 + Math.random() * 200);
+                obstacles[obstacles.length-1].y = newY;
+                lastY = newY;
+            }
         }
     }
-    function spawnInitialRoadMarkings() { for(let i=-1; i*80 < gameHeight; i++) roadMarkings.push({x: gameWidth / 2 - 2.5, y: i*80}); }
-    function spawnInitialScenery() { for(let i=0; i<10; i++) spawnScenery(); }
 
+    function spawnInitialRoadMarkings() { 
+        roadMarkings = [];
+        const line1x = gameWidth / 3 - 2.5;
+        const line2x = (gameWidth * 2) / 3 - 2.5;
+        for(let i=-1; i*80 < gameHeight; i++) {
+            roadMarkings.push({x: line1x, y: i*80});
+            roadMarkings.push({x: line2x, y: i*80});
+        }
+    }
 
     // --- Game State Management ---
     function endGame() {
@@ -562,8 +585,6 @@
             highScoreElement.textContent = `Best: ${highScore}`;
         }
         
-        updateGlobalHighScore(finalScore);
-
         finalScoreElement.textContent = `Your Score: ${finalScore}`;
         gameOverMenu.style.display = 'block';
     }
@@ -583,6 +604,7 @@
         let oldWidth = gameWidth;
         setCanvasSize();
         car.x = (car.x / oldWidth) * gameWidth; // Recalculate car position
+        spawnInitialRoadMarkings(); // Redraw markings for new size
     });
 
     restartButton.addEventListener('click', () => {
@@ -619,5 +641,6 @@
 
 </body>
 </html>
+
 
 
