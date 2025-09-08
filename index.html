@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Endless Driver</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1a1a1a;
+            font-family: 'Press Start 2P', cursive;
+            color: #fff;
+            overflow: hidden;
+        }
+        .game-container {
+            text-align: center;
+            background: #2c2c2c;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(255, 165, 0, 0.5);
+            border: 2px solid #FFA500;
+        }
+        h1 {
+            font-size: 2rem;
+            color: #FFA500;
+            text-shadow: 0 0 10px #FFA500;
+        }
+        canvas {
+            background-color: #333; /* Asphalt color */
+            display: block;
+            margin: 0 auto;
+            border-radius: 10px;
+            border: 2px solid #555;
+        }
+        .info {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 600px;
+            margin: 15px auto;
+            font-size: 1.2rem;
+        }
+        .info span {
+            background: #111;
+            padding: 10px 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(255,255,255,0.3);
+        }
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            border: 2px solid #FFA500;
+            box-shadow: 0 0 20px #FFA500;
+            z-index: 10;
+        }
+        #message-box h2 {
+            margin-top: 0;
+            font-size: 2.5rem;
+            color: #ff4141;
+        }
+        #restart-button {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            background-color: #FFA500;
+            color: #1a1a1a;
+            border: none;
+            border-radius: 10px;
+            font-family: 'Press Start 2P', cursive;
+            box-shadow: 0 0 15px #FFA500;
+            transition: all 0.2s ease;
+        }
+        #restart-button:hover {
+            background-color: #fff;
+            color: #000;
+            box-shadow: 0 0 25px #FFA500;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <h1>Endless Driver</h1>
+    <div class="info">
+        <span id="score">Score: 0</span>
+        <span id="high-score">High Score: 0</span>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div id="message-box" style="display: none;">
+        <h2 id="game-over-title">Game Over</h2>
+        <p id="final-score">Your Score: 0</p>
+        <button id="restart-button">Restart</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score');
+    const highScoreElement = document.getElementById('high-score');
+    const messageBox = document.getElementById('message-box');
+    const finalScoreElement = document.getElementById('final-score');
+    const restartButton = document.getElementById('restart-button');
+
+    // --- Game Configuration ---
+    let gameWidth, gameHeight;
+    const roadMarkingWidth = 5;
+    const roadMarkingHeight = 30;
+    const carWidth = 50;
+    const carHeight = 90; // Adjusted for new car shape
+    const speedIncreaseInterval = 10; // Speed up every 10 points
+    const initialSpeed = 3;
+    const maxSpeed = 15; // Increased max speed
+
+    // --- Game State ---
+    let car, obstacles, roadMarkings;
+    let score, highScore, speed, lastSpeedIncreaseScore;
+    let gameOver;
+    let animationFrameId;
+    let touchStartX = null;
+
+    // --- Player Car ---
+    const playerCar = {
+        x: 0,
+        y: 0,
+        width: carWidth,
+        height: carHeight,
+        draw() {
+            // Main car body
+            ctx.fillStyle = '#1E1E1E'; // Dark charcoal for BMW
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            
+            // Windshield
+            ctx.fillStyle = '#ADD8E6'; // Light blue/grey
+            ctx.fillRect(this.x + 5, this.y + 10, this.width - 10, 20);
+
+            // Roof
+            ctx.fillStyle = '#111111';
+            ctx.fillRect(this.x + 2, this.y, this.width - 4, 10);
+
+            // Headlights
+            ctx.fillStyle = 'white';
+            ctx.fillRect(this.x + 5, this.y, 8, 8);
+            ctx.fillRect(this.x + this.width - 13, this.y, 8, 8);
+            
+            // Taillights
+            ctx.fillStyle = '#FF4141';
+            ctx.fillRect(this.x + 5, this.y + this.height - 8, 8, 6);
+            ctx.fillRect(this.x + this.width - 13, this.y + this.height - 8, 8, 6);
+        }
+    };
+
+    // --- Initialization ---
+    function init() {
+        setCanvasSize();
+        
+        car = Object.assign({}, playerCar);
+        car.x = gameWidth / 2 - car.width / 2;
+        car.y = gameHeight - car.height - 20;
+
+        obstacles = [];
+        roadMarkings = [];
+        score = 0;
+        speed = initialSpeed;
+        lastSpeedIncreaseScore = 0;
+        gameOver = false;
+        
+        highScore = localStorage.getItem('endlessDriverHighScore') || 0;
+        highScoreElement.textContent = `High Score: ${highScore}`;
+        messageBox.style.display = 'none';
+        
+        spawnInitialObstacles();
+        spawnInitialRoadMarkings();
+
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+        }
+        gameLoop();
+    }
+    
+    function setCanvasSize() {
+        const maxWidth = 600;
+        const maxHeight = 800;
+        const aspectRatio = 3 / 4;
+
+        let newWidth = window.innerWidth * 0.9;
+        let newHeight = window.innerHeight * 0.8;
+
+        if (newWidth / newHeight > aspectRatio) {
+            newWidth = newHeight * aspectRatio;
+        } else {
+            newHeight = newWidth / aspectRatio;
+        }
+
+        canvas.width = Math.min(newWidth, maxWidth);
+        canvas.height = Math.min(newHeight, maxHeight);
+        
+        gameWidth = canvas.width;
+        gameHeight = canvas.height;
+    }
+
+    // --- Game Loop ---
+    function gameLoop() {
+        if (gameOver) return;
+
+        update();
+        draw();
+
+        animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    // --- Update Game State ---
+    function update() {
+        // Update score and speed
+        score += speed / 50;
+        scoreElement.textContent = `Score: ${Math.floor(score)}`;
+        
+        if (score > lastSpeedIncreaseScore + speedIncreaseInterval) {
+            speed = Math.min(maxSpeed, speed + 0.5);
+            lastSpeedIncreaseScore += speedIncreaseInterval;
+        }
+
+        // Move road markings
+        roadMarkings.forEach(marking => {
+            marking.y += speed;
+        });
+        roadMarkings = roadMarkings.filter(marking => marking.y < gameHeight);
+        if (roadMarkings.length === 0 || roadMarkings[roadMarkings.length - 1].y > roadMarkingHeight * 2) {
+            roadMarkings.push({
+                x: gameWidth / 3 - roadMarkingWidth,
+                y: -roadMarkingHeight,
+            });
+             roadMarkings.push({
+                x: gameWidth * 2 / 3,
+                y: -roadMarkingHeight,
+            });
+        }
+        
+        // Move obstacles
+        obstacles.forEach(obstacle => {
+            obstacle.y += speed;
+        });
+
+        // Remove off-screen obstacles and spawn new one
+        if (obstacles.length > 0 && obstacles[0].y > gameHeight) {
+            obstacles.shift();
+            spawnObstacle();
+        }
+
+        // Collision detection
+        obstacles.forEach(obstacle => {
+            if (
+                car.x < obstacle.x + obstacle.width &&
+                car.x + car.width > obstacle.x &&
+                car.y < obstacle.y + obstacle.height &&
+                car.y + car.height > obstacle.y
+            ) {
+                endGame();
+            }
+        });
+    }
+
+    // --- Drawing ---
+    function draw() {
+        // Clear canvas
+        ctx.fillStyle = '#333';
+        ctx.fillRect(0, 0, gameWidth, gameHeight);
+
+        // Draw road shoulders
+        ctx.fillStyle = '#222';
+        ctx.fillRect(0, 0, gameWidth * 0.1, gameHeight);
+        ctx.fillRect(gameWidth * 0.9, 0, gameWidth * 0.1, gameHeight);
+
+
+        // Draw road markings
+        ctx.fillStyle = '#FFD700';
+        roadMarkings.forEach(marking => {
+            ctx.fillRect(marking.x, marking.y, roadMarkingWidth, roadMarkingHeight);
+        });
+
+        // Draw obstacles
+        obstacles.forEach(obstacle => {
+            drawObstacle(obstacle);
+        });
+        
+        // Draw car
+        car.draw();
+    }
+
+    // --- Spawning Logic ---
+    function spawnObstacle() {
+         const obstacleTypes = [
+            { type: 'rock', color: '#8B4513', width: 60, height: 50 },
+            { type: 'wood', color: '#A0522D', width: 80, height: 40 },
+            { type: 'stick', color: '#D2691E', width: 20, height: 70 },
+        ];
+        const selectedType = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+
+        const lanes = [
+            (gameWidth / 4) - (selectedType.width / 2),
+            (gameWidth / 2) - (selectedType.width / 2),
+            (gameWidth * 3 / 4) - (selectedType.width / 2)
+        ];
+        const laneIndex = Math.floor(Math.random() * lanes.length);
+        
+        const lastObstacle = obstacles[obstacles.length - 1];
+        let newY = -selectedType.height - 150; // Increased spacing
+        if(lastObstacle) {
+           newY = Math.min(newY, lastObstacle.y - gameHeight / 2.5);
+        }
+
+        obstacles.push({
+            x: lanes[laneIndex],
+            y: newY,
+            ...selectedType
+        });
+    }
+
+    function drawObstacle(obstacle) {
+        ctx.fillStyle = obstacle.color;
+        if (obstacle.type === 'rock') {
+             ctx.beginPath();
+             ctx.moveTo(obstacle.x + obstacle.width * 0.1, obstacle.y + obstacle.height * 0.9);
+             ctx.lineTo(obstacle.x + obstacle.width * 0.5, obstacle.y + obstacle.height * 0.1);
+             ctx.lineTo(obstacle.x + obstacle.width * 0.9, obstacle.y + obstacle.height * 0.9);
+             ctx.closePath();
+             ctx.fill();
+        } else {
+             ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        }
+    }
+
+    function spawnInitialObstacles() {
+        for(let i=0; i<3; i++) {
+           spawnObstacle();
+           obstacles[obstacles.length-1].y -= i * (gameHeight/2.5);
+        }
+    }
+
+    function spawnInitialRoadMarkings() {
+        for (let i = -1; i * (roadMarkingHeight * 2) < gameHeight; i++) {
+            roadMarkings.push({
+                x: gameWidth / 3 - roadMarkingWidth,
+                y: i * (roadMarkingHeight * 2),
+            });
+            roadMarkings.push({
+                x: gameWidth * 2 / 3,
+                y: i * (roadMarkingHeight * 2),
+            });
+        }
+    }
+
+    // --- Controls ---
+    function moveCar(direction) {
+        if(gameOver) return;
+        const moveSpeed = 25; // Increased speed
+        if (direction === 'left') {
+            car.x = Math.max(gameWidth * 0.1, car.x - moveSpeed); // Prevent going onto shoulder
+        } else if (direction === 'right') {
+            car.x = Math.min(gameWidth * 0.9 - car.width, car.x + moveSpeed); // Prevent going onto shoulder
+        }
+    }
+
+    window.addEventListener('keydown', e => {
+        if (e.key === 'ArrowLeft' || e.key === 'a') {
+            moveCar('left');
+        } else if (e.key === 'ArrowRight' || e.key === 'd') {
+            moveCar('right');
+        }
+    });
+    
+    // Touch controls
+    canvas.addEventListener('touchstart', e => {
+        touchStartX = e.touches[0].clientX;
+        e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', e => {
+        if (touchStartX === null) return;
+        
+        const touchCurrentX = e.touches[0].clientX;
+        const diffX = touchCurrentX - touchStartX;
+        
+        if (Math.abs(diffX) > 10) { // Threshold to prevent accidental moves
+            car.x += diffX;
+            // Clamp car position
+            car.x = Math.max(0, car.x);
+            car.x = Math.min(gameWidth - car.width, car.x);
+            
+            touchStartX = touchCurrentX;
+        }
+        e.preventDefault();
+    }, { passive: false });
+    
+    canvas.addEventListener('touchend', e => {
+        touchStartX = null;
+    });
+
+    // --- Game State Management ---
+    function endGame() {
+        gameOver = true;
+        cancelAnimationFrame(animationFrameId);
+
+        if (score > highScore) {
+            highScore = Math.floor(score);
+            localStorage.setItem('endlessDriverHighScore', highScore);
+            highScoreElement.textContent = `High Score: ${highScore}`;
+        }
+        
+        finalScoreElement.textContent = `Your Score: ${Math.floor(score)}`;
+        messageBox.style.display = 'block';
+    }
+
+    // --- Event Listeners ---
+    restartButton.addEventListener('click', init);
+    window.addEventListener('resize', () => {
+        // To avoid re-initializing on small resize events, we'll just recenter the car
+        let oldWidth = gameWidth;
+        setCanvasSize();
+        car.x = (car.x / oldWidth) * gameWidth;
+    });
+
+    // --- Start Game ---
+    init();
+
+</script>
+
+</body>
+</html>
+
