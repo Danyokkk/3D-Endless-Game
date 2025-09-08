@@ -1,3 +1,3 @@
-# danik
+# DANIK 💸
 
 https://danyokkk.github.io/
