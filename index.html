@@ -404,11 +404,12 @@
         score += (15 + speed) * dt; 
         scoreElement.textContent = `Score: ${Math.floor(score)}`;
 
-        const displaySpeed = Math.floor(score / 15);
-        const targetSpeed = 10 + displaySpeed * 0.25;
+        const displaySpeed = Math.floor(score / 15) * 2; // This is the km/h value
+        const targetSpeed = 10 + displaySpeed * 0.125; // Adjusted internal speed to match new km/h rate
 
+        // Smoothly accelerate towards the target speed
         if (speed < targetSpeed) {
-            speed += 0.05;
+            speed += 0.05; // Acceleration factor
             speed = Math.min(speed, targetSpeed);
         }
         updateEnginePitch(speed);
@@ -428,7 +429,7 @@
         });
 
         // --- OBSTACLE SPAWNING ---
-        const obstacleTargetCount = score > 50 ? 9 : 6; // Reduced count
+        const obstacleTargetCount = score > 50 ? 9 : 6;
         if (obstacles.length < obstacleTargetCount) {
             let furthestZ = 0;
             if (obstacles.length > 0) {
@@ -455,7 +456,8 @@
     function draw() {
         camera.position.x += (playerCarMesh.position.x - camera.position.x) * 0.1;
         
-        const displaySpeed = Math.floor(score / 15);
+        // --- SPEEDOMETER LOGIC ---
+        const displaySpeed = Math.floor(score / 15) * 2;
         speedometerElement.textContent = `${displaySpeed} km/h`;
 
         renderer.render(scene, camera);
@@ -464,7 +466,7 @@
     // --- Spawning Logic ---
     function createObstacleWave(zPos) {
         const newWave = [];
-        const blockTwoLanes = score > 150 && Math.random() > 0.8; // Even less frequent double blocks
+        const blockTwoLanes = score > 150 && Math.random() > 0.8; 
         
         if (blockTwoLanes) {
             const safeLane = Math.floor(Math.random() * 3);
@@ -611,5 +613,4 @@
 
 </body>
 </html>
-
 
